@@ -1,30 +1,69 @@
-name: Generate blocklist 
+name: Generate blocklists
 on:
   schedule:
-  - cron: '0 0 * * *'
-  push:
+  - cron: '0 12 * * *'
   workflow_dispatch:
 
 jobs:
-  build:
+  download:
+    name: Download bad domains
     runs-on: ubuntu-latest
+    steps:
+    - name: Create domain file
+      run: |
+        set -x
+        for url in $(curl -s 'https://v.firebog.net/hosts/lists.php?type=tick'); do
+          curl -s $url | \
+          awk '/^\w/ && match($0, /([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9]\.)+[a-zA-Z-]{2,63}\.?/ ) \
+          {print tolower(substr($0, RSTART, RLENGTH))}' 
+        done | sort -u | xargs -rn1 printf '%s\n' > bad_domains
+        echo "Generated $(wc -l bad_domains)"
+
+    - name: Archive domain file
+      uses: actions/upload-artifact@v3
+      with:
+        retention-days: 1
+        name: bad_domains
+        path: bad_domains
+
+  build:
+    name: Build list
+    runs-on: ubuntu-latest
+    needs: download
+    strategy:
+      fail-fast: false
+      matrix:
+        list:
+        - hosts
+        - unbound
 
     steps:
+    - name: Download domain file
+      uses: actions/download-artifact@v3
+      with: 
+        name: bad_domains
 
-    - name: Checkout build repo
-      uses: actions/checkout@v2
-
-    - name: Generate blocklist
-      shell: bash
+    - name: Create ${{ matrix.list }} list
       run: |
-        for url in `cat dns_hosts.txt`; do curl -s $url | \
-          awk '/^\w/&&match($0,/([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9]\.)+[a-zA-Z-]{2,63}\.?/){print tolower(substr($0,RSTART,RLENGTH))}' 
-        done | \
-        sort -u | \
-        xargs -rn1 printf 'local-zone:"%s"refuse\n' > unbound.txt
-        echo "Generated on `date -u`" > README.md
+        set -x
+        [ ${{ matrix.list }} = "hosts" ] && cat bad_domains | xargs -rn1 printf '0.0.0.0 %s\n' > hosts.txt || true
+        [ ${{ matrix.list }} = "unbound" ] && cat bad_domains | xargs -rn1 printf 'local-zone:"%s"refuse\n' > unbound.txt || true
 
-    - name: Commit output
-      uses: stefanzweifel/git-auto-commit-action@v4
+    - name: Archive blocklists
+      uses: actions/upload-artifact@v3
       with:
-        commit_message: Nightly update
+        retention-days: 1
+        name: blocklists
+        path: "*.txt"
+
+  upload:
+    needs: build
+    uses: filterpaper/scripts/.github/workflows/commit-artifact.yml@main
+    with:
+      artifact_name: blocklists
+      artifact_folder: .
+
+  purge:
+    needs: build
+    uses: filterpaper/scripts/.github/workflows/delete-workflow.yml@main
+
