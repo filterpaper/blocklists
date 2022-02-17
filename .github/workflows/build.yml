@@ -1,0 +1,30 @@
+name: Generate blocklist 
+on:
+  schedule:
+  - cron: '0 0 * * *'
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - name: Checkout build repo
+      uses: actions/checkout@v2
+
+    - name: Generate blocklist
+      shell: bash
+      run: |
+        for url in `cat dns_hosts.txt`; do curl -s $url | \
+          awk '/^\w/&&match($0,/([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9]\.)+[a-zA-Z-]{2,63}\.?/){print tolower(substr($0,RSTART,RLENGTH))}' 
+        done | \
+        sort -u | \
+        xargs -rn1 printf 'local-zone:"%s"refuse\n' > unbound.txt
+        echo "Generated on `date -u`" > README.md
+
+    - name: Commit output
+      uses: stefanzweifel/git-auto-commit-action@v4
+      with:
+        commit_message: Nightly update
