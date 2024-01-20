@@ -1,49 +1,22 @@
 name: Generate blocklists
 on:
   schedule:
-  - cron: '0 */6 * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Build blocklists
-      run: |
-        host_filter() {
-          awk '
-          BEGIN {
-            while ("curl -Ls https://github.com/filterpaper/blocklists/raw/main/nxdomains.txt" | getline) {
-              nxdomains[$0]
-            }
-          }
-          /^\w/ {
-            if (match($0, /([a-zA-Z0-9_][a-zA-Z0-9_-]{0,62}\.)+([a-zA-Z][a-zA-Z0-9-]{0,61}[a-zA-Z])/)) {
-              domain = tolower(substr($0, RSTART, RLENGTH))
-              if (!(domain in nxdomains)) printf "local-zone: \"%s\" always_null\n", domain
-            }
-          }'
-        }
+      - name: Build blocklists
+        run: curl -fLs https://github.com/filterpaper/blocklists/raw/main/build_blocklist.py | python3 > unbound.txt
 
-        build_list() {
-          for url in $(curl -Ls https://github.com/filterpaper/blocklists/raw/main/src.txt)
-          do
-            curl -fLs $url | host_filter
-          done | sort -u | tee unbound.txt | wc -l
-        }
-
-        if [ $(build_list) -gt 350000 ]
-        then
-          echo "Too many entries"
-          exit 1
-        fi
-
-    - name: Archive blocklists
-      uses: actions/upload-artifact@main
-      with:
-        retention-days: 1
-        name: unbound
-        path: unbound.txt
+      - name: Archive blocklists
+        uses: actions/upload-artifact@main
+        with:
+          retention-days: 1
+          name: unbound
+          path: unbound.txt
 
   upload:
     needs: build
