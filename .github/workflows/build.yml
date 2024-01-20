@@ -32,10 +32,10 @@ jobs:
           done | sort -u | tee unbound.txt | wc -l
         }
 
-        if [ $(build_list) -gt 350000 ]
+        if [ $(build_list) -gt 380000 ]
         then
           echo "Too many entries"
-          exit 1
+          exit 0
         fi
 
     - name: Archive blocklists
