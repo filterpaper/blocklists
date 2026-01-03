@@ -1,3 +1,2 @@
-https://big.oisd.nl/unbound
 https://github.com/hagezi/dns-blocklists/raw/main/rpz/pro.txt
 https://github.com/hkamran80/blocklists/raw/refs/heads/main/smart-tv.txt
